@@ -83,23 +83,23 @@ class MegatronMLP(FMoETransformerMLP):
             from megatron.mpu import get_data_parallel_group
             moe_group = get_data_parallel_group()
 
-        if not args.balance_strategy or args.balance_strategy == "naive":
-            from fmoe.gates import NaiveGate
-            gate = NaiveGate
-        elif args.balance_strategy == "noisy":
-            from fmoe.gates import NoisyGate
-            gate = NoisyGate
-        elif args.balance_strategy == "gshard":
-            from fmoe.gates import GShardGate
-            gate = GShardGate
-        elif args.balance_strategy == "switch":
-            from fmoe.gates import SwitchGate
-            gate = SwitchGate
-        elif args.balance_strategy == "swipe":
-            from fmoe.gates import SwipeGate
-            gate = SwipeGate
-        elif gate is None:
-            assert False, "Undefined balance strategy {}" % (args.balance_strategy)
+        # if not args.balance_strategy or args.balance_strategy == "naive":
+        #     from fmoe.gates import NaiveGate
+        #     gate = NaiveGate
+        # elif args.balance_strategy == "noisy":
+        #     from fmoe.gates import NoisyGate
+        #     gate = NoisyGate
+        # elif args.balance_strategy == "gshard":
+        #     from fmoe.gates import GShardGate
+        #     gate = GShardGate
+        # elif args.balance_strategy == "switch":
+        #     from fmoe.gates import SwitchGate
+        #     gate = SwitchGate
+        # elif args.balance_strategy == "swipe":
+        #     from fmoe.gates import SwipeGate
+        #     gate = SwipeGate
+        # elif gate is None:
+        #     assert False, "Undefined balance strategy {}" % (args.balance_strategy)
 
         super().__init__(
             args.fmoe_num_experts,
@@ -109,7 +109,7 @@ class MegatronMLP(FMoETransformerMLP):
             world_size=world_size,
             moe_group=moe_group,
             expert_dp_comm="none" if args.distributed_experts else "dp",
-            gate_hook=generate_megatron_gate_hook(
+            gate_hook=generate_megatron_gate_hook( # currently it's empty
                 layer_idx, args.fmoe_num_experts * world_size
             ),
             gate=gate,
@@ -130,24 +130,24 @@ class MegatronMLP(FMoETransformerMLP):
         additional numpy rng is used.
         """
         rng = np.random.default_rng(np.random.randint(2048) + self.rank)
-        
+
         if type(self.experts) is nn.ModuleList:
             for expert in self.experts:
                 _megatron_init_method(expert.htoh4, rng, self.sigma)
         else:
             _megatron_init_method(self.experts.htoh4, rng, self.sigma)
-        
+
         std = self.sigma / math.sqrt(2.0 * self.num_layers)
-        
+
         if type(self.experts) is nn.ModuleList:
             for expert in self.experts:
                 _megatron_init_method(expert.h4toh, rng, std)
         else:
             _megatron_init_method(self.experts.h4toh, rng, std)
 
-    def forward(self, inp):
+    def forward(self, inp, gate_top_k_idx, gate_score):
         from megatron import mpu
-        x = super().forward(inp)
+        x = super().forward(inp, gate_top_k_idx, gate_score)
         x = mpu.reduce_from_tensor_model_parallel_region(x)
         return (
             x,
@@ -204,7 +204,7 @@ def fmoefy(
         # initialize gate hook
         num_layers = len(model.language_model.transformer.layers)
     elif megatron_version in ["v2.5", "v3.0.2"]:
-        
+
         for idx, l in enumerate(model.language_model.encoder.layers):
             l.mlp = MegatronMLP(args, idx, gate=gate)
         if hasattr(model.language_model, "decoder") and model.language_model.decoder is not None:

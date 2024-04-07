@@ -20,22 +20,22 @@ def patch_loss_func_v2_5(loss_func):
         args = get_args()
         assert args.balance_strategy, "Only use patched loss_func when having balance_strategy."
         assert is_pipeline_last_stage(), "Only call loss_func at pipeline last stage."
-        
+
         output = loss_func(output_tensor)
-        
+
         while hasattr(model, 'module'):
             model = model.module
 
-        loss_list = [l.mlp.gate.get_loss(clear=False).view(1)
+        loss_list = [l.gate.get_loss(clear=False).view(1)
                 for l in model.language_model.encoder.layers
-                if l.mlp.gate.has_loss]
+                if l.gate.has_loss]
 
         if hasattr(model.language_model, "decoder") and model.language_model.decoder is not None:
-            loss_list_decoder = [l.mlp.gate.get_loss(clear=False).view(1)
+            loss_list_decoder = [l.gate.get_loss(clear=False).view(1)
                     for l in model.language_model.decoder.layers
-                    if l.mlp.gate.has_loss]
+                    if l.gate.has_loss]
             loss_list.append(loss_list_decoder)
-            
+
         if len(loss_list) == 0:
             return output
 
@@ -110,13 +110,17 @@ def patch_forward_step(forward_step_func, Megatron_Version="v2.2"):
     def forward_step_with_balance_loss_v2_5(data_iterator, model):
         from functools import partial
         output, loss_func = forward_step_func(data_iterator, model)
-    
+
         while hasattr(model, 'module'):
             model = model.module
 
-        loss_list = [l.mlp.gate.get_loss(clear=False).view(1)
+        # loss_list = [l.mlp.gate.get_loss(clear=False).view(1)
+        #         for l in model.language_model.encoder.layers
+        #         if l.mlp.gate.has_loss]
+
+        loss_list = [l.gate.get_loss(clear=False).view(1)
                 for l in model.language_model.encoder.layers
-                if l.mlp.gate.has_loss]
+                if l.gate.has_loss]
 
         bal_loss = torch.cat(loss_list).mean() * get_args().balance_loss_weight / get_args().pipeline_model_parallel_size
         return output, partial(patch_loss_func_v2_5(loss_func), model), bal_loss
@@ -151,7 +155,7 @@ def patch_model_provider(model_provider, gate=None, Megatron_Version='v2.2'):
             gate=gate,
             megatron_version="v2.2"
         )
-    
+
     def fmoefied_model_provider_v2_5(pre_process, post_process):
         from .layers import fmoefy
         args = get_args()
@@ -168,7 +172,7 @@ def patch_model_provider(model_provider, gate=None, Megatron_Version='v2.2'):
             gate=gate,
             megatron_version="v2.5"
         )
-    
+
     def fmoefied_model_provider_v3_0_2(pre_process, post_process):
         from .layers import fmoefy
         args = get_args()

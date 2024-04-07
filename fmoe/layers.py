@@ -152,10 +152,10 @@ class FMoE(nn.Module):
         else:
             self.experts_fused = True
 
-        if issubclass(gate, NaiveGate):
-            self.gate = gate(d_model, num_expert, world_size, top_k, gate_bias=gate_bias)
-        else:
-            self.gate = gate(d_model, num_expert, world_size, top_k)
+        # if issubclass(gate, NaiveGate):
+        #     self.gate = gate(d_model, num_expert, world_size, top_k, gate_bias=gate_bias)
+        # else:
+        #     self.gate = gate(d_model, num_expert, world_size, top_k)
         self.gate_hook = gate_hook
         self.mask = mask
         self.mask_dict = mask_dict
@@ -200,9 +200,9 @@ class FMoE(nn.Module):
                     mark_module_parallel_comm(e, comm)
             else:
                 mark_module_parallel_comm(self.experts, comm)
-        mark_module_parallel_comm(self.gate, "gate")
+        # mark_module_parallel_comm(self.gate, "gate")
 
-    def forward(self, moe_inp):
+    def forward(self, moe_inp, gate_top_k_idx, gate_score):
         r"""
         The FMoE module first computes gate output, and then conduct MoE forward
         according to the gate.  The score of the selected gate given by the
@@ -231,8 +231,10 @@ class FMoE(nn.Module):
 
             moe_inp = tree.map_structure(slice_func, moe_inp)
 
-        gate_top_k_idx, gate_score = self.gate(moe_inp)
+        # We bring gating calculation forward
+        # gate_top_k_idx, gate_score = self.gate(moe_inp)
 
+        # Currently we don't use gate_hook
         if self.gate_hook is not None:
             self.gate_hook(gate_top_k_idx, gate_score, None)
 
